@@ -59,7 +59,7 @@ class InternalDnsProvider:
     zones_dir: Path
 
     # what internal interface address to serve coredns on for the main routing records
-    # None indicates that we should never bind / serve these records, and will raise DnsNotEnabled on attempts.
+    # None disables the public view; the container view can still serve zones and forward DNS.
     bind_ip: str | None
     # what internal interface address to serve coredns on for the loopback records,
     # or none if these records should not be served (dev/CI)
@@ -94,8 +94,8 @@ class InternalDnsProvider:
         if _is_local_only(zone):
             # these already resolve without coredns
             return
-        if not self.serves_public_zones:
-            raise DnsNotEnabled(f"No address to serve {zone!r} on; this instance is not bound for public DNS")
+        if not self.serves_public_zones and self.container_gateway_ip is None:
+            raise DnsNotEnabled(f"No address to serve {zone!r} on; neither DNS view is enabled")
         normalized_zone = normalize_zone(zone)
         # Read the current set only once the lock is held: computing the new set outside it means
         # two concurrent changes both build on the same stale set, and the second to land drops
@@ -110,7 +110,7 @@ class InternalDnsProvider:
     async def remove_zone(self, zone: str) -> None:
         # Mirror add_zone's skips: neither kind of domain was ever added, so there is nothing to
         # re-render, and re-rendering would restart CoreDNS for a zone it never served.
-        if _is_local_only(zone) or not self.serves_public_zones:
+        if _is_local_only(zone) or (not self.serves_public_zones and self.container_gateway_ip is None):
             return
         name = normalize_zone(zone)
         async with self._zone_lock:
@@ -168,12 +168,12 @@ class InternalDnsProvider:
         await self._match_process_to_zones()
 
     async def _match_process_to_zones(self) -> None:
-        """Run CoreDNS exactly when there is a zone to answer for.
+        """Run CoreDNS while zones or the container DNS forwarder need it.
 
-        Caller holds the zone lock.  With nothing to serve the Corefile has no server blocks, which
-        CoreDNS refuses to start against, so not running is the only honest state for it.
+        Caller holds the zone lock.  The gateway's catch-all still serves external DNS after the
+        last zone is removed.  Without either, the Corefile has no server blocks and cannot run.
         """
-        if not self._zones:
+        if not self._zones and self.container_gateway_ip is None:
             if self._coredns is not None:
                 logger.info("No zones left to serve; stopping CoreDNS")
                 await self.cleanup()
