@@ -32,7 +32,9 @@ from compute_space.core.auth.security_audit import is_sshd_active
 from compute_space.core.auth.security_audit import list_listening_ports
 from compute_space.core.containers import drop_docker_build_cache
 from compute_space.core.diagnostics import PlatformDiagnostics
+from compute_space.core.diagnostics import ResourceUsage
 from compute_space.core.diagnostics import collect_platform_diagnostics
+from compute_space.core.diagnostics import collect_resource_usage
 from compute_space.core.git_ops import get_branch_name
 from compute_space.core.git_ops import get_head_sha
 from compute_space.core.git_ops import is_dirty
@@ -335,6 +337,11 @@ async def api_version() -> VersionInfo:
 # ─── Diagnostics ─────────────────────────────────────────────────────────
 
 
+@get("/api/resource-usage", guards=[require_owner_auth])
+async def api_resource_usage(db: NamedDependency[sqlite3.Connection]) -> ResourceUsage:
+    return await collect_resource_usage(db)
+
+
 def _diagnostics_filename(zone_domain: str) -> str:
     """Build a safe, timestamped filename for a downloaded diagnostics bundle."""
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -394,6 +401,7 @@ system_routes = Router(
         toggle_ssh,
         drop_docker_cache,
         api_version,
+        api_resource_usage,
         api_diagnostics,
         restart_router,
     ],

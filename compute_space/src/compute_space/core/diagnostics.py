@@ -175,6 +175,18 @@ class AppResourceUsage:
 
 
 @attr.s(auto_attribs=True, frozen=True)
+class AppResourceUsageSummary:
+    name: str
+    resources: AppResourceUsage
+
+
+@attr.s(auto_attribs=True, frozen=True)
+class ResourceUsage:
+    resource_pressure: HostResourcePressure
+    apps: list[AppResourceUsageSummary]
+
+
+@attr.s(auto_attribs=True, frozen=True)
 class AppHealth:
     """Result of probing an app's health endpoint over the loopback proxy port.
 
@@ -959,6 +971,25 @@ async def _collect_apps(db: sqlite3.Connection) -> list[AppDiagnosticsSummary]:
     # shared batch. gather preserves input order, so apps stay sorted by name.
     results = await asyncio.gather(*(_safe_summary(row) for row in rows))
     return [summary for summary in results if summary is not None]
+
+
+async def collect_resource_usage(db: sqlite3.Connection) -> ResourceUsage:
+    """Collect only the live data needed by the System page usage charts."""
+    rows = db.execute("SELECT name, container_id, cpu_cores, memory_mb FROM apps ORDER BY name").fetchall()
+    batch = await asyncio.to_thread(_collect_container_stats_batch)
+    apps = [
+        AppResourceUsageSummary(
+            name=row["name"],
+            resources=_app_resources_from_batch(
+                batch,
+                row["container_id"],
+                row["cpu_cores"],
+                row["memory_mb"],
+            ),
+        )
+        for row in rows
+    ]
+    return ResourceUsage(resource_pressure=_collect_resource_pressure(), apps=apps)
 
 
 async def collect_platform_diagnostics(db: sqlite3.Connection, config: Config) -> PlatformDiagnostics:
