@@ -245,9 +245,8 @@ function guardToggle(pause, label, hint) {
 // ─── App Resource Usage (CPU + memory donuts) ───
 // Donuts showing how CPU and memory are split across running apps, plus an
 // "Unused" slice for the box's remaining headroom so the overall load is
-// visible at a glance. Data comes from the combined diagnostics bundle, which
-// carries per-app live stats (apps[].resources) plus host totals
-// (resource_pressure).
+// visible at a glance. Data carries per-app live stats (apps[].resources) plus
+// host totals (resource_pressure).
 
 function runningWith(apps, field) {
   return apps.filter(function(a) {
@@ -358,7 +357,7 @@ function renderResourceUsage(apps, pressure) {
 }
 
 function updateResourceUsage() {
-  fetch(config.diagnosticsUrl, {credentials: 'same-origin'})
+  fetch(config.resourceUsageUrl, {credentials: 'same-origin'})
     .then(function(r) { return r.json(); })
     .then(function(data) {
       renderResourceUsage(data.apps || [], data.resource_pressure || null);
