@@ -480,7 +480,7 @@ _TEMPLATE = """{% from "_components/icon_nav.html" import icon_nav %}{% from "_c
       font-size: 0.8em;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      color: #888;
+      color: #737373;
       margin: 0 0 0.4em;
     }
     aside.sidebar ul { list-style: none; margin: 0; padding: 0; }
@@ -512,7 +512,7 @@ _TEMPLATE = """{% from "_components/icon_nav.html" import icon_nav %}{% from "_c
     main.content h1 { margin-top: 0; font-size: 1.7em; }
     main.content h2 { margin-top: 2em; font-size: 1.3em; }
     main.content h3 { margin-top: 1.5em; font-size: 1.1em; }
-    main.content a { color: #36c; text-decoration: none; }
+    main.content a { color: #36c; text-decoration: underline; }
     main.content a:hover { text-decoration: underline; }
     main.content table {
       border-collapse: collapse;
@@ -571,8 +571,8 @@ _TEMPLATE = """{% from "_components/icon_nav.html" import icon_nav %}{% from "_c
       align-items: center;
       justify-content: center;
       position: relative;
-      width: 22px;
-      height: 22px;
+      width: 24px;
+      height: 24px;
       margin-left: 0.3em;
       vertical-align: middle;
       border-radius: 3px;
@@ -581,6 +581,7 @@ _TEMPLATE = """{% from "_components/icon_nav.html" import icon_nav %}{% from "_c
       opacity: 0.6;
       transition: opacity 0.12s ease, color 0.12s ease;
     }
+    main.content a.copy-md { text-decoration: none; }
     h1:hover a.copy-md, a.copy-md:focus-visible { opacity: 1; }
     a.copy-md:hover { color: #36c; background: #f0f0f0; opacity: 1; }
     a.copy-md.copied { color: #36c; background: transparent; opacity: 1; }
