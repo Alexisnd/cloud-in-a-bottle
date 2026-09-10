@@ -61,9 +61,14 @@ function donutHtml(id, segments, defaultName, defaultText) {
     return '<path class="pie-slice" d="' + d + '" fill="' + s.color + '"'
       + ' data-name="' + escAttr(s.name) + '" data-size="' + escAttr(s.valueText) + '"></path>';
   }).join('');
+  var accessibleLabel = defaultName + ': ' + defaultText;
+  if (segments.length) {
+    accessibleLabel += '. ' + segments.map(function(s) { return s.name + ': ' + s.valueText; }).join(', ');
+  }
 
   return '<svg class="usage-pie" id="' + id + '" viewBox="0 0 200 200" width="200" height="200" role="img"'
-    + ' data-default-name="' + escAttr(defaultName) + '" data-default-size="' + escAttr(defaultText) + '">'
+    + ' aria-label="' + escAttr(accessibleLabel) + '" data-default-name="' + escAttr(defaultName)
+    + '" data-default-size="' + escAttr(defaultText) + '">'
     + slices
     + '<text class="pie-center-name" data-role="name" x="100" y="96">' + escHtml(defaultName) + '</text>'
     + '<text class="pie-center-size" data-role="size" x="100" y="114">' + escHtml(defaultText) + '</text>'
