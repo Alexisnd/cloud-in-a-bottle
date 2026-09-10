@@ -315,8 +315,8 @@ async def test_a_zone_this_instance_cannot_serve_is_refused(tmp_path: Path) -> N
 async def test_the_first_zone_starts_coredns_and_the_last_one_leaving_stops_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # There is no separate start(): a provider with nothing to answer for renders a Corefile with
-    # no server blocks, which CoreDNS won't start against, so the process follows the zone set.
+    # A public-only provider with nothing to answer for has no server blocks, so its process follows
+    # the zone set.
     stub_coredns_spawn(monkeypatch)
 
     config = _seed_dns_cfg(tmp_path, Domain(name="host.example.com", tls=True))
@@ -371,7 +371,7 @@ async def test_concurrent_zone_changes_do_not_drop_each_other(tmp_path: Path, mo
     async def yielding_restart(self: InternalDnsProvider) -> None:
         await asyncio.sleep(0)
 
-    monkeypatch.setattr(InternalDnsProvider, "_match_process_to_zones", yielding_restart)
+    monkeypatch.setattr(InternalDnsProvider, "_reconcile_process", yielding_restart)
 
     await asyncio.gather(dns.add_zone("a.example.com"), dns.add_zone("b.example.com"), dns.add_zone("c.example.com"))
 

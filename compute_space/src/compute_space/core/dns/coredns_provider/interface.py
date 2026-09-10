@@ -76,6 +76,14 @@ class InternalDnsProvider:
     # Record writes need no lock -- they never await, so they cannot interleave.
     _zone_lock: asyncio.Lock = attr.ib(factory=asyncio.Lock, init=False, eq=False, repr=False)
 
+    async def start(self) -> None:
+        """Start CoreDNS when either DNS view has work to do."""
+        async with self._zone_lock:
+            if self._coredns is not None or (not self._zones and self.container_gateway_ip is None):
+                return
+            self._write_config()
+            await self._start_process()
+
     async def cleanup(self) -> None:
         """Shut CoreDNS down for good.  A no-op if it isn't running, so a shutdown path needs no check of its own."""
         if self._coredns is not None:
@@ -165,9 +173,9 @@ class InternalDnsProvider:
         # Re-render whether or not anything is serving the files right now: a later start reads
         # them as they are.
         self._write_config()
-        await self._match_process_to_zones()
+        await self._reconcile_process()
 
-    async def _match_process_to_zones(self) -> None:
+    async def _reconcile_process(self) -> None:
         """Run CoreDNS while zones or the container DNS forwarder need it.
 
         Caller holds the zone lock.  The gateway's catch-all still serves external DNS after the
@@ -178,10 +186,14 @@ class InternalDnsProvider:
                 logger.info("No zones left to serve; stopping CoreDNS")
                 await self.cleanup()
         elif self._coredns is None:
-            logger.info(f"Serving DNS for {', '.join(self._zones)}")
-            self._coredns = await CoreDnsProcess.start(self.corefile_path, coredns_bin=self.coredns_bin)
+            await self._start_process()
         else:
             await self._coredns.restart()
+
+    async def _start_process(self) -> None:
+        """Start CoreDNS against the config already rendered by the caller."""
+        logger.info(f"Serving DNS for {', '.join(self._zones) or 'container forwarding'}")
+        self._coredns = await CoreDnsProcess.start(self.corefile_path, coredns_bin=self.coredns_bin)
 
     def _write_config(self) -> None:
         """The Corefile and every zone file, rendered from scratch.

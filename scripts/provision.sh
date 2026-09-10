@@ -44,7 +44,7 @@ usage() {
     echo "                      URLs from it and without it they point at :80."
     echo "  --branch            Git branch to deploy (default: main)"
     echo "  --repo              Git repo URL (default: cloud-in-a-bottle/cloud-in-a-bottle)"
-    echo "  --local-http-only   HTTP-only localhost mode: no TLS, CoreDNS, or Caddy."
+    echo "  --local-http-only   HTTP-only localhost mode: no TLS, public DNS, or Caddy."
     echo "                      For bringing an instance up before a public domain +"
     echo "                      DNS are ready.  Reach it via an SSH tunnel to :8080."
     echo "  --bind-host         Router bind address (default: config default,"
@@ -224,7 +224,7 @@ echo ""
 echo "=== Cloud in a Bottle provisioning complete ==="
 echo ""
 if [ "$LOCAL_HTTP_ONLY" = "true" ]; then
-    echo "  Mode:      HTTP-only localhost (no TLS/CoreDNS/Caddy)"
+    echo "  Mode:      HTTP-only localhost (no TLS/public DNS/Caddy)"
     if [ "$OPEN_CLAIM" = "true" ]; then
         echo "  Claim:     /setup is ungated (--open-claim); no token needed"
     fi

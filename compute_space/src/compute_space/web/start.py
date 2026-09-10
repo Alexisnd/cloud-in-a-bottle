@@ -153,6 +153,9 @@ async def _start_dns(config: Config, domains: tuple[Domain, ...]) -> InternalDns
             # and a TLS one reports the consequence through its cert status.
             logger.warning("Not serving DNS for {}: coredns is not enabled", domain.name_no_port)
 
+    # Local-only domains do not add an authoritative zone, but app containers still need the
+    # gateway's forwarding resolver for outbound DNS.
+    await dns_provider.start()
     return dns_provider
 
 
