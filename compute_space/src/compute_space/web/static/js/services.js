@@ -58,7 +58,8 @@ function renderServices(providers) {
     });
     rows += '<tr>'
       + '<td><code>' + escServiceHtml(svc) + '</code></td>'
-      + '<td><select data-service="' + escServiceHtml(svc) + '">' + options + '</select></td>'
+      + '<td><select aria-label="Default provider for ' + escServiceHtml(svc)
+      + '" data-service="' + escServiceHtml(svc) + '">' + options + '</select></td>'
       + '<td style="white-space:nowrap;">'
       + '<button class="btn btn-primary" onclick="saveDefaultProvider(this)">Save</button> '
       + '<span class="muted default-msg"></span>'

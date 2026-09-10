@@ -1,6 +1,7 @@
 """Automated WCAG checks for representative Cloud in a Bottle UI pages."""
 
 import socket
+import sqlite3
 from collections.abc import Iterator
 
 import pytest
@@ -53,7 +54,7 @@ def _scan_page(page: Page, axe: Axe, base_url: str, path: str) -> list[str]:
     if path == "/settings":
         page.wait_for_function(
             """() => !document.getElementById('archive-backend-status').textContent.trim().startsWith('Loading')
-              && !document.getElementById('services-status').textContent.trim().startsWith('Loading')
+              && document.querySelector('select[data-service="github.com/example/a11y"]')
               && document.getElementById('ssh-status').textContent.trim()"""
         )
     elif path == "/system/":
@@ -88,6 +89,18 @@ def _scan_page(page: Page, axe: Axe, base_url: str, path: str) -> list[str]:
     return failures
 
 
+def _seed_service_provider(stack: LocalStack) -> None:
+    with sqlite3.connect(stack.config.db_path) as db:
+        db.execute(
+            "INSERT INTO apps (app_id, name, version, repo_path, local_port, status)"
+            " VALUES ('a11yprovider', 'a11y-provider', '1.0', '/tmp/a11y-provider', 29999, 'running')"
+        )
+        db.execute(
+            "INSERT INTO service_providers_v2 (service_url, app_id, service_version, endpoint)"
+            " VALUES ('github.com/example/a11y', 'a11yprovider', '1.0', '/')"
+        )
+
+
 def test_owner_ui_has_no_automatically_detectable_wcag_2_2_aa_violations(page: Page, stack: LocalStack) -> None:
     axe = Axe()
     failures = []
@@ -96,6 +109,7 @@ def test_owner_ui_has_no_automatically_detectable_wcag_2_2_aa_violations(page: P
         failures.extend(_scan_page(page, axe, stack.router_url, path))
 
     owner = complete_setup(stack)
+    _seed_service_provider(stack)
     failures.extend(_scan_page(page, axe, stack.router_url, "/login"))
     page.context.add_cookies(
         [{"name": cookie.name, "value": cookie.value, "url": stack.router_url} for cookie in owner.cookies]
