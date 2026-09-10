@@ -26,6 +26,7 @@ from compute_space.core.app_id import new_app_id
 from compute_space.core.diagnostics import DIAGNOSTICS_SCHEMA_VERSION
 from compute_space.core.diagnostics import AppHealth
 from compute_space.core.diagnostics import GitInfo
+from compute_space.core.diagnostics import HostResourcePressure
 from compute_space.db.connection import init_db
 from compute_space.tests._litestar_helpers import auth_cookie
 from compute_space.tests._litestar_helpers import make_test_app
@@ -238,6 +239,78 @@ def test_platform_diagnostics_returns_bundle(
     names = {a["name"]: a for a in body["apps"]}
     assert "myapp" in names
     assert names["myapp"]["version"] == "2.3.4"
+
+
+def test_resource_usage_requires_auth(system_client: TestClient[Litestar]) -> None:
+    resp = system_client.get("/api/resource-usage")
+    assert resp.status_code in (401, 403)
+
+
+def test_resource_usage_returns_only_chart_data(
+    cfg: Any, system_client: TestClient[Litestar], cookies: dict[str, str]
+) -> None:
+    _seed_app(cfg.db_path, "myapp", manifest_raw=_MINIMAL_MANIFEST)
+    with sqlite3.connect(cfg.db_path) as db:
+        db.execute(
+            "UPDATE apps SET container_id = ?, cpu_cores = ?, memory_mb = ? WHERE name = ?",
+            ("a" * 64, 1.5, 256, "myapp"),
+        )
+    batch = diagnostics._ContainerStatsBatch(
+        running_short_ids=frozenset({"a" * 12}),
+        stats_by_short_id={
+            "a" * 12: diagnostics._PodmanStats(
+                cpu_percent=12.5,
+                memory_usage_bytes=64 * 1024 * 1024,
+                memory_limit_bytes=256 * 1024 * 1024,
+                memory_percent=25.0,
+            )
+        },
+    )
+    pressure = HostResourcePressure(
+        memory_total_bytes=1024,
+        memory_available_bytes=768,
+        memory_used_percent=25.0,
+        load_avg_1m=0.1,
+        load_avg_5m=0.2,
+        load_avg_15m=0.3,
+        cpu_count=4,
+        swap_total_bytes=512,
+        swap_free_bytes=512,
+    )
+    with (
+        patch("compute_space.core.diagnostics._collect_container_stats_batch", return_value=batch),
+        patch("compute_space.core.diagnostics._collect_resource_pressure", return_value=pressure),
+        patch("compute_space.core.diagnostics._collect_reachability") as reachability,
+        patch("compute_space.core.diagnostics.storage_status") as storage,
+        patch("compute_space.core.diagnostics._collect_git_info") as git_info,
+        patch("compute_space.core.diagnostics._collect_app_health") as app_health,
+    ):
+        system_client.cookies.update(cookies)
+        resp = system_client.get("/api/resource-usage")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body) == {"apps", "resource_pressure"}
+    assert body["resource_pressure"] == attr.asdict(pressure)
+    assert body["apps"] == [
+        {
+            "name": "myapp",
+            "resources": {
+                "running": True,
+                "cpu_percent": 12.5,
+                "memory_usage_bytes": 64 * 1024 * 1024,
+                "memory_limit_bytes": 256 * 1024 * 1024,
+                "memory_percent": 25.0,
+                "cpu_cores_limit": 1.5,
+                "memory_mb_limit": 256,
+                "error": None,
+            },
+        }
+    ]
+    reachability.assert_not_called()
+    storage.assert_not_called()
+    git_info.assert_not_called()
+    app_health.assert_not_called()
 
 
 def test_platform_diagnostics_download_header(
