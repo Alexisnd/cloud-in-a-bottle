@@ -126,13 +126,16 @@ def _dns_bind_ip(config: Config) -> str:
 
 async def _start_dns(config: Config, domains: tuple[Domain, ...]) -> InternalDnsProvider:
     """Build the DNS provider and bring up the zones for ``domains``."""
+    container_gateway_ip = _hairpin_gateway_ip()
     dns_provider = InternalDnsProvider(
         corefile_path=config.coredns_corefile_path,
         zones_dir=config.zones_dir,
         # None disables serving DNS entirely for the main routing records
         bind_ip=_dns_bind_ip(config) if config.coredns_enabled else None,
-        container_gateway_ip=_hairpin_gateway_ip(),
-        coredns_bin=_ensure_coredns_binary(config) if config.coredns_enabled else "coredns",
+        container_gateway_ip=container_gateway_ip,
+        coredns_bin=_ensure_coredns_binary(config)
+        if config.coredns_enabled or container_gateway_ip is not None
+        else "coredns",
     )
 
     # Before the first add_zone, so the zones CoreDNS starts on already carry the A records routing
@@ -150,6 +153,9 @@ async def _start_dns(config: Config, domains: tuple[Domain, ...]) -> InternalDns
             # and a TLS one reports the consequence through its cert status.
             logger.warning("Not serving DNS for {}: coredns is not enabled", domain.name_no_port)
 
+    # Local-only domains do not add an authoritative zone, but app containers still need the
+    # gateway's forwarding resolver for outbound DNS.
+    await dns_provider.start()
     return dns_provider
 
 

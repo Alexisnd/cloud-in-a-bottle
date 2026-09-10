@@ -91,6 +91,58 @@ async def test_dns_is_not_bound_when_coredns_is_disabled(tmp_path: Path, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_container_dns_starts_with_public_dns_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_coredns_spawn(monkeypatch)
+    monkeypatch.setattr(start_mod, "_hairpin_gateway_ip", lambda: CONTAINER_GATEWAY_IP)
+    monkeypatch.setattr(start_mod, "_ensure_coredns_binary", lambda config: "/installed/coredns")
+    config = DefaultConfig(data_root_dir=str(tmp_path), coredns_enabled=False, public_ip=PUBLIC_IP)
+    config.make_all_dirs()
+
+    dns = await start_mod._start_dns(config, (Domain(name="bottle.example.com", tls=True),))
+    try:
+        assert dns._coredns is not None
+        assert dns._coredns.coredns_bin == "/installed/coredns"
+        assert not dns.serves_public_zones
+        corefile = config.coredns_corefile_path.read_text()
+        assert f"bind {CONTAINER_GATEWAY_IP}" in corefile
+        assert "forward . " in corefile
+        assert PUBLIC_IP not in corefile
+        assert all(line.strip() == f"bind {CONTAINER_GATEWAY_IP}" for line in corefile.splitlines() if "bind " in line)
+        zonefile = config.zones_dir / "bottle.example.com.zone.container"
+        assert "*   IN A    10.200.0.1" in zonefile.read_text()
+
+        await dns.remove_zone("bottle.example.com")
+        assert dns.zones == ()
+        assert not zonefile.exists()
+        assert dns._coredns is not None
+        assert "forward . " in config.coredns_corefile_path.read_text()
+        assert "bottle.example.com:53" not in config.coredns_corefile_path.read_text()
+    finally:
+        await dns.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_container_dns_starts_with_only_lvh_me(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_coredns_spawn(monkeypatch)
+    monkeypatch.setattr(start_mod, "_hairpin_gateway_ip", lambda: CONTAINER_GATEWAY_IP)
+    monkeypatch.setattr(start_mod, "_ensure_coredns_binary", lambda config: "/installed/coredns")
+    config = DefaultConfig(data_root_dir=str(tmp_path), coredns_enabled=False, public_ip=PUBLIC_IP)
+    config.make_all_dirs()
+
+    dns = await start_mod._start_dns(config, (Domain(name="lvh.me:8080", tls=False),))
+    try:
+        assert dns._coredns is not None
+        assert dns._coredns.coredns_bin == "/installed/coredns"
+        assert dns.zones == ()
+        corefile = config.coredns_corefile_path.read_text()
+        assert f"bind {CONTAINER_GATEWAY_IP}" in corefile
+        assert "forward . " in corefile
+        assert "lvh.me:53" not in corefile
+    finally:
+        await dns.cleanup()
+
+
+@pytest.mark.asyncio
 async def test_the_zones_carry_the_router_addresses_from_the_moment_they_are_served(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
