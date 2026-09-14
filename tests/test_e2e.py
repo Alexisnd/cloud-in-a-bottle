@@ -22,6 +22,7 @@ import websockets
 from compute_space.tests.utils import app_id_for
 from compute_space.tests.utils import wait_app_removed
 from compute_space.tests.utils import wait_app_running
+from tests import external_pins
 from tests.helpers import poll_endpoint
 
 # ---------------------------------------------------------------------------
@@ -840,10 +841,10 @@ class TestSelfHost:
     # ``[[services.v2.consumes]]`` block).  The test never reads them back out
     # of a file, and never leans on an unrelated app to do so for it.
     #
-    # Pinned to a specific commit: the repo is cloned, built, and run on the
-    # host on every deploy, so an upstream push would otherwise change what this
-    # test exercises.  See tests/external_pins.toml for the bump process.
-    _MINIO_REPO = "https://github.com/cloud-in-a-bottle/bottled-minio@dc2e4d0ff0b7aa64ad5e23da814d7efcd169cb4b"
+    # Pinned: the repo is cloned, built, and run on the host on every deploy, so
+    # an upstream push would otherwise change what this test exercises.  The sha
+    # and the bump process live in tests/external_pins.toml.
+    _MINIO_REPO = external_pins.git_url("bottled-minio")
 
     def test_13c_provision_minio_secrets(self, session, router_url, domain):
         """Store the MinIO root credentials in the secrets service so MinIO can
