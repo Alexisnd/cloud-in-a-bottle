@@ -31,6 +31,8 @@ DOMAIN = os.environ.get("OPENHOST_DOMAIN", "")
 APP_DEPLOY_TIMEOUT_S = 300
 # Apps live in the synced repo on the host (deployed via ansible).
 TEST_APP_PATH = "/home/host/openhost/apps/test_app"
+# The archive fixture uses a versioned, digest-pinned MinIO image.
+MINIO_REPO_URL = "https://github.com/cloud-in-a-bottle/bottled-minio@92b7f8e4d91783ac80ec378020644171422ef89b"
 # Generate a random password per test run since instances are publicly routable.
 OWNER_PASSWORD = "E2e!" + "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(20))
 # Claim token written by ansible at deploy time; required to POST /setup.
@@ -718,10 +720,10 @@ class TestSelfHost:
     # -- 13c. S3 archive backend (MinIO) -----------------------------------
 
     def test_13c_deploy_minio(self, session, router_url):
-        """Deploy MinIO from its public GitHub repo."""
+        """Deploy the pinned MinIO archive fixture."""
         r = session.post(
             f"{router_url}/api/add_app",
-            json={"repo_url": "https://github.com/cloud-in-a-bottle/bottled-minio"},
+            json={"repo_url": MINIO_REPO_URL},
             timeout=120,
         )
         assert r.status_code == 200, f"add_app minio failed: {r.status_code}: {r.text[:500]}"
@@ -774,7 +776,7 @@ class TestSelfHost:
         TestSelfHost._minio_password = creds["password"]
 
     def test_13f_create_minio_bucket(self, domain):
-        """Create a test bucket in MinIO using the mc CLI on the host via SSH."""
+        """Create test buckets using the client bundled in the MinIO fixture."""
         minio_user = getattr(TestSelfHost, "_minio_user", None)
         minio_password = getattr(TestSelfHost, "_minio_password", None)
         assert minio_user and minio_password, "MinIO credentials not available"
@@ -786,20 +788,33 @@ class TestSelfHost:
         public_ip = os.environ.get("OPENHOST_PUBLIC_IP", "")
         assert ssh_key and public_ip, "SSH credentials not available for bucket creation"
 
-        ssh_opts = f"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i {ssh_key}"
-        # Install mc (MinIO client), configure alias, create bucket.
-        # Detect the VM's arch so this works on both amd64 and arm64 hosts.
+        # The pinned fixture includes an architecture-matched client. Its
+        # in-container S3 port is 9000; the host archive backend uses 9106.
+        # Pixi supplies Podman and its runtime helpers on the host.
+        mc = (
+            "/home/host/.pixi/bin/pixi run --locked --manifest-path /home/host/openhost/pyproject.toml "
+            "podman exec openhost-minio /usr/bin/mc"
+        )
         commands = (
-            'mcarch=$(case "$(uname -m)" in (aarch64|arm64) echo linux-arm64;; *) echo linux-amd64;; esac) && '
-            "curl -sL https://dl.min.io/client/mc/release/$mcarch/mc -o /tmp/mc && chmod +x /tmp/mc && "
-            f"/tmp/mc alias set e2e {endpoint} '{minio_user}' '{minio_password}' && "
-            f"/tmp/mc mb --ignore-existing e2e/{bucket} && "
+            f"{mc} alias set e2e http://localhost:9000 {shlex.quote(minio_user)} {shlex.quote(minio_password)} && "
+            f"{mc} mb --ignore-existing e2e/{bucket} && "
             # Second bucket for the later s3->s3 migration test (13k).
-            f"/tmp/mc mb --ignore-existing e2e/{bucket}-2"
+            f"{mc} mb --ignore-existing e2e/{bucket}-2"
         )
         result = subprocess.run(
-            f"ssh {ssh_opts} host@{public_ip} {shlex.quote(commands)}",
-            shell=True,
+            [
+                "ssh",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
+                "-o",
+                "LogLevel=ERROR",
+                "-i",
+                ssh_key,
+                f"host@{public_ip}",
+                commands,
+            ],
             capture_output=True,
             text=True,
             timeout=60,
